@@ -39,7 +39,7 @@ from typing import Iterable
 #       被合并的文件总数                        unsigned int	        1                 I
 # 被合并的文件信息表
 #       被合并的单个文件信息
-#               文件大小                       unsigned long long       1                 I
+#               文件大小                        unsigned int            1                 I
 #               文件名长度                      unsigned int            1                 I
 #               文件名字节串(包含'\0')          unsigned char *         1            <文件名长度>的值
 #       ……
