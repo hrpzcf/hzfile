@@ -142,8 +142,7 @@ cython_debug/
 # others
 /.idea/
 /.vscode/
-/test.py
-/myfile.hz
-/hzfile/test.py
+/test.*
+/*.hz
 /exta1
-~$.hz格式规范.xlsx
+/~$.hz_spec.xlsx
