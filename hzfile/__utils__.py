@@ -23,18 +23,38 @@
 # SOFTWARE.
 ################################################################################
 
-from os import path
+from os import path, remove
 from pathlib import Path
 from struct import calcsize, pack, unpack
 from typing import Iterable
 
-# 本平台各类型所占字节数
-B = calcsize("B")
-H = calcsize("H")
-I = calcsize("I")
-Q = calcsize("Q")
+# ================================================================================================
+#                 项目                            解析方式           类型数量            总大小
+# ========================================    ===============       ========       ================
+# 文件头信息
+#       文件格式标识                            unsigned char           16              B * 16
+#       类型占用字节数    依次为 B, H, I, Q     unsigned char            4               B * 4
+#       格式版本信息                            unsigned short          4               H * 4
+#       预留空白字节                                NA	                NA               255
+#       被合并的文件总数                        unsigned int	        1                 I
+# 被合并的文件信息表
+#       被合并的单个文件信息
+#               文件大小信息                    unsigned long long      1                 Q
+#               文件名长度                      unsigned int            1                 I
+#               文件名字节串(包含'\0')          unsigned char *         1            <文件名长度>的值
+#       ……
+# 被合并的文件数据
+#       被合并的文件数据字节
+#       ……
+# ================================================================================================
 
-# 储存相关信息的数据类型及所占的空间大小(字节数)
+# 本平台各类型所占字节数
+B = calcsize("B")  # unsigned char
+H = calcsize("H")  # unsigned short
+I = calcsize("I")  # unsigned int
+Q = calcsize("Q")  # unsigned long long
+
+# 储存相关信息的类型匹配符及所占的空间大小(字节数)
 # 类型信息见 struct 模块文档
 HEADT, HEADN = "16B", B * 16  # 文件头(标识符)
 TYPET, TYPEN = "4B", B * 4  # 类型长度表
@@ -48,11 +68,11 @@ CODING = "UTF-8"
 HEADNUMS = 0, 104, 114, 112, 122, 99, 102
 HEADBYTES = bytearray(16)
 HEADBYTES[:7] = HEADNUMS
-FVERNUMS = 0, 0, 1, 0
-BOMSTART = HEADN + TYPEN + FVERN + 255 + FCNTN
+FVERNUMS = 0, 0, 0, 1
 # 类型长度表及文件格式版本的解析方式
 REMHEADT = "<{}{}".format(TYPET, FVERT)
-MAXFILESIZE = 2 ** (I * 8) - 1  # 外部最大文件大小
+# 外部最大文件大小
+MAXFILESIZE = 2 ** (I * 8) - 1
 
 
 class HzFile(object):
@@ -71,30 +91,69 @@ class HzFile(object):
         else:
             self.__createhzfile()
 
+    def __del__(self):
+        if self.fcnt() == 0:
+            try:
+                remove(self.__hzpath)
+            except:
+                pass
+
+    @property
+    def FCNTN(self):
+        """储存被合并文件数量的值的字节数"""
+        return self.ftypesize("I")
+
+    @property
+    def FSIZEN(self):
+        """储存单个被合并文件大小的值的字节数"""
+        return self.ftypesize("I")
+
+    @property
+    def FNLENN(self):
+        """储存单个被合并文件名长度的值的字节数"""
+        return self.ftypesize("I")
+
+    @property
+    def FVERN(self):
+        """储存生成'.hz'二进制文件所用的标准版本的值的字节数"""
+        return self.ftypesize("H") * 4
+
+    @property
+    def BOMSTART(self):
+        """被合并的文件信息表的起始位置的偏移量"""
+        return HEADN + TYPEN + self.FVERN + 255 + self.FCNTN
+
     def fver(self):
+        """返回本格式文件的版本信息列表[a,b,c,d]"""
         return self.__head[20:24]
 
     def fcnt(self):
+        """返回被合并的文件总数量"""
         if len(self.__head) < 25:
             return 0
         return self.__head[24]  # [0,1,2,3]
 
     def fbom(self):
+        """
+        返回被合并的文件信息表
+        [(文件大小， 文件名长度， 文件名), ...]
+        """
         fcount = self.fcnt()
         if not fcount:
             return list()
         filebom = list()
         with open(self.__hzpath, "rb") as hzb:
-            hzb.seek(BOMSTART, 0)
+            hzb.seek(self.BOMSTART, 0)
             for i in range(fcount):
                 fsize, fnlen = unpack(
-                    "<{}{}".format(FSIZET, FNLENT), hzb.read(FSIZEN + FNLENN)
+                    "<{}{}".format(FSIZET, FNLENT), hzb.read(self.FSIZEN + self.FNLENN)
                 )
                 fname, *_ = unpack("{}s".format(fnlen), hzb.read(fnlen))
                 filebom.append((fsize, fnlen, fname[:-1].decode(CODING)))
         return filebom
 
     def ftypesize(self, s=None):
+        """返回对应解析方式所需要的字节数"""
         if s == "B":
             return self.__head[16]
         if s == "H":
@@ -121,15 +180,16 @@ class HzFile(object):
 
     def __readhead(self):
         with open(self.__hzpath, "rb") as hzb:
+            # 初次读取文件已存在的hz文件时，标识符表尚未生成，需按全局类型读取
             head = hzb.read(HEADN)
             if head != HEADBYTES:
                 raise ValueError("This file is not a valid '.hz' file")
             self.__head.extend(unpack(HEADT, head))
-            self.__head.extend(
-                unpack("<{}{}".format(TYPET, FVERT), hzb.read(TYPEN + FVERN))
-            )
-            hzb.seek(HEADN + TYPEN + FVERN + 255, 0)
-            fcntbytes = hzb.read(FCNTN)
+            # 初次读取文件已存在的hz文件时，类型占用表尚未生成，需按全局类型读取
+            self.__head.extend(unpack("<{}".format(TYPET), hzb.read(TYPEN)))
+            self.__head.extend(unpack("<{}".format(FVERT), hzb.read(self.FVERN)))
+            hzb.seek(HEADN + TYPEN + self.FVERN + 255, 0)
+            fcntbytes = hzb.read(self.FCNTN)
             if fcntbytes:
                 self.__head.extend(unpack(FCNTT, fcntbytes))
         return True
@@ -155,6 +215,13 @@ class HzFile(object):
         return True
 
     def merge(self, dirpath, recursion=False, bigok=False):
+        """
+        将其他文件合并入'.hz'文件内
+
+        参数 dirpath: str, 目录路径，里面包含的文件会被合并入'.hz'文件内
+        参数 recursion: bool, 是否递归搜索本目录的子目录
+        参数 bigok: bool，如果 bigok 为 True 则跳过超过大小的文件，否则抛出异常
+        """
         if not self.__writable:
             raise IOError("It is read-only when opening written '.hz' file")
         self.__writable = 0
@@ -178,7 +245,7 @@ class HzFile(object):
                     if bigok:
                         continue
                     raise Exception(
-                        "The file cannot be larger than {} Byte.".format(MAXFILESIZE)
+                        "The file cannot be larger than {} Byte".format(MAXFILESIZE)
                     )
                 filenamelist.append(i)
                 namebyte = str(i.name).encode(CODING) + b"\x00"
@@ -189,6 +256,13 @@ class HzFile(object):
         self.__writedata(bombytelist, filenamelist)
 
     def extract(self, names, dirpath=None, overwrite=False):
+        """
+        从'.hz'文件中提取被合并的文件
+
+        参数 name: Iterable，含有文件名的可迭代对象
+        参数 dirpath: str, 为 None 将使用用当前工作目录
+        参数 overwrite: bool, 当储存提取的文件的目录中有同名文件是否覆盖
+        """
         if not isinstance(names, Iterable):
             raise TypeError("The param1 must be an iterable object.")
         if dirpath is None:
@@ -202,10 +276,10 @@ class HzFile(object):
         datastart = (
             HEADN
             + TYPEN
-            + FVERN
+            + self.FVERN
             + 255
-            + FCNTN
-            + (FSIZEN + FNLENN) * len(bom)
+            + self.FCNTN
+            + (self.FSIZEN + self.FNLENN) * len(bom)
             + sum(i[1] for i in bom)
         )
         hzbin = open(self.__hzpath, "rb")
@@ -219,14 +293,17 @@ class HzFile(object):
                 count = namecount[filename]
                 if count > 0:
                     base, ext = path.splitext(filename)
-                    filename = "{}({}){}".format(base, count, ext)
+                    filename = "{}_{}{}".format(base, count, ext)
                 filename = dirpath.joinpath(filename)
                 if filename.exists():
                     if not overwrite:
                         continue
                     else:
                         if filename.is_dir():
-                            filename.rmdir()
+                            try:
+                                filename.rmdir()
+                            except:
+                                continue
                 with open(filename, "wb") as fbin:
                     hzbin.seek(datastart, 0)
                     fbin.write(hzbin.read(readlength))
@@ -234,5 +311,10 @@ class HzFile(object):
         hzbin.close()
 
     def extractall(self, dirpath=None, overwrite=False):
+        """
+        从'.hz'文件中提取所有被合并的文件
+
+        参数同 extract 方法
+        """
         names = (i[2] for i in self.fbom())
         self.extract(names, dirpath, overwrite)
