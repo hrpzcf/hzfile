@@ -28,26 +28,6 @@ from pathlib import Path
 from struct import calcsize, pack, unpack
 from typing import Iterable
 
-# =================================================================================================
-#                                                解析方式              项数             总大小
-# ========================================    ===============       ========       ================
-# 文件头部信息
-#       文件格式标识                            unsigned char           16              B * 16
-#       类型占用字节数    依次为 B, H, I, Q     unsigned char            4               B * 4
-#       格式版本信息                            unsigned short          4               H * 4
-#       预留空白字节                                NA	                NA               255
-#       被合并的文件总数                        unsigned int	        1                 I
-# 被合并的文件信息表
-#       被合并的单个文件信息
-#               文件大小                        unsigned int            1                 I
-#               文件名长度                      unsigned int            1                 I
-#               文件名字节串(包含'\0')          unsigned char *         1            <文件名长度>的值
-#       ……
-# 被合并的文件数据
-#       被合并的文件数据字节
-#       ……
-# =================================================================================================
-
 # 本平台各类型所占字节数
 B = calcsize("B")  # unsigned char
 H = calcsize("H")  # unsigned short
