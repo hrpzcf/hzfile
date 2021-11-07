@@ -36,12 +36,12 @@ Q = calcsize("Q")  # unsigned long long
 
 # 储存相关信息的类型匹配符及所占的空间大小(字节数)
 # 类型信息见 struct 模块文档
-HEADT, HEADN = "16B", B * 16  # 文件头(标识符)
-TYPET, TYPEN = "4B", B * 4  # 类型长度表
-FVERT, FVERN = "4H", H * 4  # 本文件格式版本
-FCNTT, FCNTN = "I", I  # 合并的外部文件数
-FSIZET, FSIZEN = "I", I  # 外部文件大小
-FNLENT, FNLENN = "I", I  # 外部文件名长度(字节数)
+HEADF, HEADN = "16B", B * 16  # 文件头(标识符)
+TYPEF, TYPEN = "4B", B * 4  # 类型长度表
+FVERF, FVERN = "4H", H * 4  # 本文件格式版本
+FCNTF, FCNTN = "I", I  # 合并的外部文件数
+FSIZEF, FSIZEN = "I", I  # 外部文件大小
+FNLENF, FNLENN = "I", I  # 外部文件名长度(字节数)
 
 BLANKBYTES = bytes(255)
 CODING = "UTF-8"
@@ -50,7 +50,7 @@ HEADBYTES = bytearray(16)
 HEADBYTES[:7] = HEADNUMS
 FVERNUMS = 0, 0, 0, 1
 # 类型长度表及文件格式版本的解析方式
-REMHEADT = "<{}{}".format(TYPET, FVERT)
+REMHEADT = "<{}{}".format(TYPEF, FVERF)
 # 外部最大文件大小
 MAXFILESIZE = 2 ** (I * 8) - 1
 
@@ -126,7 +126,7 @@ class HzFile(object):
             hzb.seek(self.BOMSTART, 0)
             for i in range(fcount):
                 fsize, fnlen = unpack(
-                    "<{}{}".format(FSIZET, FNLENT), hzb.read(self.FSIZEN + self.FNLENN)
+                    "<{}{}".format(FSIZEF, FNLENF), hzb.read(self.FSIZEN + self.FNLENN)
                 )
                 fname, *_ = unpack("{}s".format(fnlen), hzb.read(fnlen))
                 filebom.append((fsize, fnlen, fname[:-1].decode(CODING)))
@@ -164,14 +164,14 @@ class HzFile(object):
             head = hzb.read(HEADN)
             if head != HEADBYTES:
                 raise ValueError("This file is not a valid '.hz' file")
-            self.__head.extend(unpack(HEADT, head))
+            self.__head.extend(unpack(HEADF, head))
             # 初次读取文件已存在的hz文件时，类型占用表尚未生成，需按全局类型读取
-            self.__head.extend(unpack("<{}".format(TYPET), hzb.read(TYPEN)))
-            self.__head.extend(unpack("<{}".format(FVERT), hzb.read(self.FVERN)))
+            self.__head.extend(unpack("<{}".format(TYPEF), hzb.read(TYPEN)))
+            self.__head.extend(unpack("<{}".format(FVERF), hzb.read(self.FVERN)))
             hzb.seek(HEADN + TYPEN + self.FVERN + 255, 0)
             fcntbytes = hzb.read(self.FCNTN)
             if fcntbytes:
-                self.__head.extend(unpack(FCNTT, fcntbytes))
+                self.__head.extend(unpack(FCNTF, fcntbytes))
         return True
 
     def __writedata(self, bomlist, namelist):
@@ -187,7 +187,7 @@ class HzFile(object):
         filenum = len(filesopened)
         with open(self.__hzpath, "ab") as hzb:
             self.__head.append(filenum)
-            hzb.write(pack(FCNTT, filenum))
+            hzb.write(pack(FCNTF, filenum))
             hzb.write(b"".join(bomlist))
             for filehandle in filesopened:
                 hzb.write(filehandle.read())
@@ -231,7 +231,7 @@ class HzFile(object):
                 namebyte = str(i.name).encode(CODING) + b"\x00"
                 namelen = len(namebyte)
                 bombytelist.append(
-                    pack("<{}{}".format(FSIZET, FNLENT), filesize, namelen) + namebyte
+                    pack("<{}{}".format(FSIZEF, FNLENF), filesize, namelen) + namebyte
                 )
         self.__writedata(bombytelist, filenamelist)
 
