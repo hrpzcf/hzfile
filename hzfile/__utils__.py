@@ -247,11 +247,12 @@ class HzFile(object):
             raise TypeError("The param1 must be an iterable object.")
         if dirpath is None:
             dirpath = Path.cwd()
-        dirpath = Path(dirpath)
-        if not dirpath.exists():
-            dirpath.mkdir(parents=1)
-        elif not dirpath.is_dir():
-            raise ValueError("The param2 must be a path to a directory")
+        else:
+            dirpath = Path(dirpath)
+            if not dirpath.exists():
+                dirpath.mkdir(parents=1)
+            elif not dirpath.is_dir():
+                raise ValueError("The param2 must be a path to a directory")
         names, namecount, bom = set(names), dict(), self.fbom()
         datastart = (
             HEADN
@@ -263,8 +264,7 @@ class HzFile(object):
             + sum(i[1] for i in bom)
         )
         hzbin = open(self.__hzpath, "rb")
-        for i in bom:
-            readlength, _, filename = i
+        for readlength, _, filename in bom:
             if filename in names:
                 if filename in namecount:
                     namecount[filename] += 1
