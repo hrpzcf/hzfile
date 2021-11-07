@@ -122,14 +122,14 @@ class HzFile(object):
         if not fcount:
             return list()
         filebom = list()
-        with open(self.__hzpath, "rb") as hzb:
+        with fopen(self.__hzpath, "rb") as hzb:
             hzb.seek(self.BOMSTART, 0)
             for i in range(fcount):
                 fsize, fnlen = unpack(
                     "<{}{}".format(FSIZEF, FNLENF), hzb.read(self.FSIZEN + self.FNLENN)
                 )
-                fname, *_ = unpack("{}s".format(fnlen), hzb.read(fnlen))
-                filebom.append((fsize, fnlen, fname[:-1].decode(CODING)))
+                fnbytes = unpack("{}s".format(fnlen), hzb.read(fnlen))[0]
+                filebom.append((fsize, fnlen, fnbytes[:-1].decode(CODING)))
         return filebom
 
     def ftypesize(self, s=None):
@@ -152,14 +152,14 @@ class HzFile(object):
         self.__head.extend([0] * (16 - len(HEADNUMS)))
         self.__head.extend((B, H, I, Q))
         self.__head.extend(FVERNUMS)
-        with open(self.__hzpath, "wb") as hzb:
+        with fopen(self.__hzpath, "wb") as hzb:
             hzb.write(HEADBYTES)
             hzb.write(pack(REMHEADT, B, H, I, Q, *FVERNUMS))
             hzb.write(BLANKBYTES)
         self.__writable = 1
 
     def __readhead(self):
-        with open(self.__hzpath, "rb") as hzb:
+        with fopen(self.__hzpath, "rb") as hzb:
             # 初次读取文件已存在的hz文件时，标识符表尚未生成，需按全局类型读取
             head = hzb.read(HEADN)
             if head != HEADBYTES:
@@ -179,13 +179,13 @@ class HzFile(object):
         while index < len(namelist):
             try:
                 f = namelist[index]
-                filesopened.append(open(f, "rb"))
+                filesopened.append(fopen(f, "rb"))
                 index += 1
             except:
                 del bomlist[index]
                 del namelist[index]
         filenum = len(filesopened)
-        with open(self.__hzpath, "ab") as hzb:
+        with fopen(self.__hzpath, "ab") as hzb:
             self.__head.append(filenum)
             hzb.write(pack(FCNTF, filenum))
             hzb.write(b"".join(bomlist))
@@ -263,7 +263,7 @@ class HzFile(object):
             + (self.FSIZEN + self.FNLENN) * len(bom)
             + sum(i[1] for i in bom)
         )
-        hzbin = open(self.__hzpath, "rb")
+        hzbin = fopen(self.__hzpath, "rb")
         for readlength, _, filename in bom:
             if filename in names:
                 if filename in namecount:
@@ -284,7 +284,7 @@ class HzFile(object):
                                 filename.rmdir()
                             except:
                                 continue
-                with open(filename, "wb") as fbin:
+                with fopen(filename, "wb") as fbin:
                     hzbin.seek(datastart, 0)
                     fbin.write(hzbin.read(readlength))
             datastart += readlength
@@ -298,3 +298,12 @@ class HzFile(object):
         """
         names = (i[2] for i in self.fbom())
         self.extract(names, dirpath, overwrite)
+
+
+def fopen(*args, **kwargs):
+    """
+    因 Python 3.5 的 open 函数第一个参数不支持Path对象
+
+    所以此 fopen 函数作为 Python 3.5 的 open 函数兼容层
+    """
+    return open(str(args[0]), *args[1:], **kwargs)
