@@ -261,6 +261,7 @@ class HzFile(object):
             + 255
             + self.FCNTN
             + (self.FSIZEN + self.FNLENN) * len(bom)
+            # 文件名(i[2])字节串长度值保存在i[1]中
             + sum(i[1] for i in bom)
         )
         hzbin = _open(self.__hzpath, "rb")
