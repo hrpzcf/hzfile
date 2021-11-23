@@ -118,19 +118,14 @@ class HzFile(object):
         返回被合并的文件信息表
         [(文件大小， 文件名长度， 文件名), ...]
         """
-        fcount = self.fcnt()
-        if not fcount:
-            return list()
-        filebom = list()
         with _open(self.__hzpath, "rb") as hzb:
             hzb.seek(self.BOMSTART, 0)
-            for i in range(fcount):
+            for i in range(self.fcnt()):
                 fsize, fnlen = unpack(
                     "<{}{}".format(FSIZEF, FNLENF), hzb.read(self.FSIZEN + self.FNLENN)
                 )
                 fnbytes = unpack("{}s".format(fnlen), hzb.read(fnlen))[0]
-                filebom.append((fsize, fnlen, fnbytes[:-1].decode(CODING)))
-        return filebom
+                yield fsize, fnlen, fnbytes[:-1].decode(CODING)
 
     def ftypesize(self, s=None):
         """返回对应解析方式所需要的字节数"""
