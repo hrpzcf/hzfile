@@ -3,7 +3,7 @@
 from .__utils__ import HzFile
 
 NAME = "hzfile"
-VERNUM = 0, 0, 3
+VERNUM = 0, 1, 0
 VERSION = ".".join(map(str, VERNUM))
 AUTHOR = "hrpzcf"
 EMAIL = "hrpzcf@foxmail.com"
