@@ -200,12 +200,13 @@ class HzFile(object):
         """
         从'.hz'文件中提取被合并的文件
 
-        参数 name: Iterable，含有文件名的可迭代对象
+        参数 names: Iterable or None，含有文件名的可迭代对象，为None时提取全部
         参数 dirpath: str, 为 None 将使用用当前工作目录
-        参数 overwrite: bool, 当储存提取的文件的目录中有同名文件是否覆盖
+        参数 overwrite: bool, 当储存提取的文件的目录中，如果提取之前就已存在与即将提取出的文件同名时，是否覆盖
+        参数 overwrite: bool, 提取过程中出现同名文件会自动以 "name[_count].[ext]"格式重命名，不受overwrite参数影响
         """
-        if not isinstance(names, Iterable):
-            raise TypeError("The param1 must be an iterable object.")
+        if not isinstance(names, (Iterable, type(None))):
+            raise TypeError("The param1 must be an iterable object or <None>.")
         if dirpath is None:
             dirpath = Path.cwd()
         else:
@@ -214,7 +215,9 @@ class HzFile(object):
                 dirpath.mkdir(parents=1)
             elif not dirpath.is_dir():
                 raise ValueError("The param2 must be a path to a directory")
-        names, namecount, bom = set(names), dict(), list(self.fbom())
+        if names is not None:
+            names = set(names)
+        namecount, bom = dict(), list(self.fbom())
         datastart = (
             HEADN
             + TYPEN
@@ -227,7 +230,7 @@ class HzFile(object):
         )
         hzbin = _open(self.__hzpath, "rb")
         for readlength, _, filename in bom:
-            if filename in names:
+            if (names is None) or (filename in names):
                 if filename in namecount:
                     namecount[filename] += 1
                 else:
@@ -258,8 +261,7 @@ class HzFile(object):
 
         参数同 extract 方法
         """
-        names = (i[2] for i in self.fbom())
-        self.extract(names, dirpath, overwrite)
+        self.extract(None, dirpath, overwrite)
 
 
 def _open(*args, **kwargs):
