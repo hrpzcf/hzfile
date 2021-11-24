@@ -25,34 +25,34 @@
 
 from os import path, remove
 from pathlib import Path
-from struct import calcsize, pack, unpack
+from struct import pack, unpack
 from typing import Iterable
 
 # 本平台各类型所占字节数
-B = calcsize("B")  # unsigned char
-H = calcsize("H")  # unsigned short
-I = calcsize("I")  # unsigned int
-Q = calcsize("Q")  # unsigned long long
+B_SIZE = 1  # unsigned char
+H_SIZE = 2  # unsigned short
+I_SIZE = 4  # unsigned int
+Q_SIZE = 8  # unsigned long long
 
 # 储存相关信息的类型匹配符及所占的空间大小(字节数)
 # 类型信息见 struct 模块文档
-HEADF, HEADN = "16B", B * 16  # 文件头(标识符)
-TYPEF, TYPEN = "4B", B * 4  # 类型长度表
-FVERF, FVERN = "4H", H * 4  # 本文件格式版本
-FCNTF, FCNTN = "I", I  # 合并的外部文件数
-FSIZEF, FSIZEN = "I", I  # 外部文件大小
-FNLENF, FNLENN = "I", I  # 外部文件名长度(字节数)
+HEADF, HEADN = "16B", B_SIZE * 16  # 文件头(标识符)
+TYPEF, TYPEN = "4B", B_SIZE * 4  # 类型长度表
+FVERF, FVERN = "4H", H_SIZE * 4  # 本文件格式版本
+FCNTF, FCNTN = "I", I_SIZE * 1  # 合并的外部文件数
+FSIZEF, FSIZEN = "I", I_SIZE * 1  # 外部文件大小
+FNLENF, FNLENN = "I", I_SIZE * 1  # 外部文件名长度(字节数)
 
 BLANKBYTES = bytes(255)
 CODING = "UTF-8"
 HEADNUMS = 0x00, 0x68, 0x72, 0x70, 0x7A, 0x63, 0x66
 HEADBYTES = bytearray(16)
 HEADBYTES[:7] = HEADNUMS
-FVERNUMS = 0, 0, 0, 1
+FVERNUMS = 0, 0, 0, 4
 # 类型长度表及文件格式版本的解析方式
 REMHEADT = "<{}{}".format(TYPEF, FVERF)
 # 外部最大文件大小
-MAXFILESIZE = 2 ** (I * 8) - 1
+MAXFILESIZE = 2 ** (I_SIZE * 8) - 1
 
 
 class HzFile(object):
@@ -78,31 +78,6 @@ class HzFile(object):
             except:
                 pass
 
-    @property
-    def FCNTN(self):
-        """储存被合并文件数量的值的字节数"""
-        return self.ftypesize("I")
-
-    @property
-    def FSIZEN(self):
-        """储存单个被合并文件大小的值的字节数"""
-        return self.ftypesize("I")
-
-    @property
-    def FNLENN(self):
-        """储存单个被合并文件名长度的值的字节数"""
-        return self.ftypesize("I")
-
-    @property
-    def FVERN(self):
-        """储存生成'.hz'二进制文件所用的标准版本的值的字节数"""
-        return self.ftypesize("H") * 4
-
-    @property
-    def BOMSTART(self):
-        """被合并的文件信息表的起始位置的偏移量"""
-        return HEADN + TYPEN + self.FVERN + 255 + self.FCNTN
-
     def fver(self):
         """返回本格式文件的版本信息列表[a,b,c,d]"""
         return self.__head[20:24]
@@ -113,43 +88,33 @@ class HzFile(object):
             return 0
         return self.__head[24]  # [0,1,2,3]
 
+    @property
+    def BOMOFFSET(self):
+        """被合并的文件信息表的起始位置的偏移量"""
+        return HEADN + TYPEN + FVERN + 255 + FCNTN
+
     def fbom(self):
         """
-        返回被合并的文件信息表
+        返回被合并的文件信息表生成器
         [(文件大小， 文件名长度， 文件名), ...]
         """
         with _open(self.__hzpath, "rb") as hzb:
-            hzb.seek(self.BOMSTART, 0)
-            for i in range(self.fcnt()):
+            hzb.seek(self.BOMOFFSET, 0)
+            for _ in range(self.fcnt()):
                 fsize, fnlen = unpack(
-                    "<{}{}".format(FSIZEF, FNLENF), hzb.read(self.FSIZEN + self.FNLENN)
+                    "<{}{}".format(FSIZEF, FNLENF), hzb.read(FSIZEN + FNLENN)
                 )
                 fnbytes = unpack("{}s".format(fnlen), hzb.read(fnlen))[0]
                 yield fsize, fnlen, fnbytes[:-1].decode(CODING)
 
-    def ftypesize(self, s=None):
-        """返回对应解析方式所需要的字节数"""
-        if s == "B":
-            return self.__head[16]
-        if s == "H":
-            return self.__head[17]
-        if s == "I":
-            return self.__head[18]
-        if s == "Q":
-            return self.__head[19]
-        if s is None:
-            return self.__head[16:20]
-        else:
-            return calcsize(s)
-
     def __createhzfile(self):
         self.__head.extend(HEADNUMS)
         self.__head.extend([0] * (16 - len(HEADNUMS)))
-        self.__head.extend((B, H, I, Q))
+        self.__head.extend((B_SIZE, H_SIZE, I_SIZE, Q_SIZE))
         self.__head.extend(FVERNUMS)
         with _open(self.__hzpath, "wb") as hzb:
             hzb.write(HEADBYTES)
-            hzb.write(pack(REMHEADT, B, H, I, Q, *FVERNUMS))
+            hzb.write(pack(REMHEADT, B_SIZE, H_SIZE, I_SIZE, Q_SIZE, *FVERNUMS))
             hzb.write(BLANKBYTES)
         self.__writable = 1
 
@@ -161,11 +126,12 @@ class HzFile(object):
                 raise ValueError("This file is not a valid '.hz' file")
             self.__head.extend(unpack(HEADF, head))
             # 初次读取文件已存在的hz文件时，类型占用表尚未生成，需按全局类型读取
-            self.__head.extend(unpack("<{}".format(TYPEF), hzb.read(TYPEN)))
-            self.__head.extend(unpack("<{}".format(FVERF), hzb.read(self.FVERN)))
-            hzb.seek(HEADN + TYPEN + self.FVERN + 255, 0)
-            fcntbytes = hzb.read(self.FCNTN)
-            if fcntbytes:
+            self.__head.extend(
+                unpack("<{}{}".format(TYPEF, FVERF), hzb.read(TYPEN + FVERN))
+            )
+            hzb.seek(255, 1)  # 从当前指针位置跳过空白字节(空白字节占255)
+            fcntbytes = hzb.read(FCNTN)
+            if len(fcntbytes) == I_SIZE:
                 self.__head.extend(unpack(FCNTF, fcntbytes))
         return True
 
@@ -248,14 +214,14 @@ class HzFile(object):
                 dirpath.mkdir(parents=1)
             elif not dirpath.is_dir():
                 raise ValueError("The param2 must be a path to a directory")
-        names, namecount, bom = set(names), dict(), self.fbom()
+        names, namecount, bom = set(names), dict(), list(self.fbom())
         datastart = (
             HEADN
             + TYPEN
-            + self.FVERN
+            + FVERN
             + 255
-            + self.FCNTN
-            + (self.FSIZEN + self.FNLENN) * len(bom)
+            + FCNTN
+            + (FSIZEN + FNLENN) * len(bom)
             # 文件名(i[2])字节串长度值保存在i[1]中
             + sum(i[1] for i in bom)
         )
